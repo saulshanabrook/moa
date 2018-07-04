@@ -1,297 +1,297 @@
-import matchpy as mp
-from functools import partial
-
-r = mp.ManyToOneReplacer()
-
-# Shorcuts
-new = mp.Operation.new
-
-unary = lambda n, c: new(n, mp.Arity.unary, c)
-binary = lambda n, c: new(n, mp.Arity.binary, c, infix=True)
-
-def add(*args):
-    expresions, *constraints, replacement = args
-    r.add(mp.ReplacementRule(
-        mp.Pattern(expresions, *constraints),
-        replacement
-    ))
-
-
-class Array(mp.Symbol):
-    def __init__(self, shape, index_fn=None, name=None):
-        super().__init__(name)
-        self.shape = tuple(shape)
-        self.index_fn = index_fn
-    
-    def __str__(self):
-        if self.is_sca:
-            if self.index_fn:
-                return str(self.as_python)
-            if self.name:
-                return 'σ_{self.name}'
-            return 'σ'
-
-        if self.is_vec:
-            if self.index_fn:
-                return f'<{" ".join(map(str, self.as_python))}>'
-            if self.name:
-                return f'{self.name}'
-            return 'v'
-        
-        if self.name:
-            return self.name
-        return 'a'
-
-    @property
-    def is_sca(self):
-        return len(self.shape) == 0
-
-
-    @property
-    def is_vec(self):
-        return len(self.shape) == 1
-
-    @property
-    def as_python(self):
-        if not self.index_fn:
-            raise NotImplementedError()
-        if self.is_sca:
-            return self.index_fn()
-        return [
-            Array(self.shape[1:], partial(self.index_fn, i)).as_python
-            for i in range(self.shape[0])
-        ]
-        
-
-def sca(content):
-    return Array([], lambda: content)
-
-
-def vec(*contents):
-    return Array([len(contents)], lambda i: contents[i])
-
-Shape = unary('ρ', 'Shape')
-Dimension = unary('δ', 'Dimension')
-Take = binary('△', 'Take')
-Drop = binary('▽', 'Drop')
-Cat = new('++', mp.Arity.variadic, 'Cat', infix=True, one_identity=True, associative=True)
-Psi = binary('ψ', 'Psi')
-Plus = new('+', mp.Arity.variadic, 'Plus', infix=True, one_identity=True, associative=True, commutative=True)
-
-_ = mp.Wildcard.dot()
-e = mp.Wildcard.dot('e')
-f = mp.Wildcard.dot('f')
-a = mp.Wildcard.symbol('a', Array)
-b = mp.Wildcard.symbol('b', Array)
-
-a_is_vec = mp.CustomConstraint(lambda a: a.is_vec)
-b_is_vec = mp.CustomConstraint(lambda b: b.is_vec)
-
-add(Shape(a),
-    lambda a: vec(*a.shape))
-add(Dimension(e),
-    lambda e: Psi(vec(0), Shape(Shape(e))))
-add(Psi(b, Psi(a, e)),
-    a_is_vec,
-    b_is_vec,
-    lambda a, b, e: Psi(Cat(a, b), e))
-add(Psi(a, b),
-    a_is_vec,
-    mp.CustomConstraint(lambda a, b: len(b.shape) == a.shape[0]),
-    lambda a, b: sca(b.index_fn(*a.as_python)))
-
-# add(Shape(Drop(a, f)),
-#     a_is_vec,
-#     lambda a, f: Minus(Shape(f))
-
-# add(Shape(Cat(Array(a, ), f)),
-#     mp.CustomConstraint(
-#         lambda e, f: print(r.replace(Drop(sca(1), Shape(f))))
-#     ),
-#     lambda e, f: Cat(Plus(Take(sca(1), Shape(e)), Take(sca(1), Shape(f))),
-#                      Drop(sca(1), Shape(e))))
-
-
-add(
-    Cat(
-        Array(Array(Array(d_l), s_l), i_l),
-        Array(Array(d_r), s_r), i_r))
-    )
+from typing import (
+    TypeVar,
+    Callable,
+    Generic,
+    List,
+    Any,
+    Tuple,
+    Mapping,
+    Iterable,
+    NamedTuple,
+    Type,
+    MutableMapping,
+    NoReturn,
 )
-B = Array([2, 4], name='B')
-C = Array([4, 6], name='C')
-A = Cat(B, Drop(vec(1, 2), C))
-print(A)
-print(r.replace(Dimension(A)))
+from typing_extensions import Protocol
+from itertools import product
+
+T = TypeVar("T", covariant=True)
 
 
-# class Dimension(mp.Operation):
-#     name = 'δ'
-#     arity = mp.Arity.unary
+class Array(Protocol[T]):
+    shape: "Array[int]"
 
-# class Take(mp.Operation):
-#     name = '△'
-#     arity = mp.Arity.binary
-#     infix = True
-
-# class Drop(mp.Operation):
-#     name = '△'
-#     arity = mp.Arity.binary
-#     infix = True
+    def __getitem__(self, ix: Tuple[int, ...]) -> T:
+        ...
 
 
-# class Cat(mp.Operation):
-#     name = '++'
-#     arity = mp.Arity.binary
-#     infix = True
+class _BaseShape:
+    """
+    Base <1> vector used for the shape of a shape of a shape, so that we don't infinitely recurse.
+    """
 
-# class Index(mp.Operation):
-#     name = 'ψ'
-#     arity = mp.Arity.binary
-#     infix = True
+    shape: Array[int]
 
+    def __getitem__(self, ix: Tuple[int, ...]) -> int:
+        return 1
 
+    def __str__(self):
+        return "<1>"
 
-# # Array = mp.Operation.new('A', mp.Arity.binary, 'Array')
-
-
-
-
-# # class Array(mp.Operation):
-# #     name = 'Array'
-
-# #     # def __init__(self, shape, content, gamma, variable_name=None):
-# #     #     super()(shape, content, gamma, variable_name=variable_name)
-# #     #     self.shape = shape
-# #     #     self.content = content
-# #     #     self.gamma = gamma
-# #     # shape, content, gamma
-# #     arity = mp.Arity(min_count=3, fixed_size=True)
-
-# #     def __str__(self):
-# #         return self.variable_name or f'A({self.operands[0]})'
-
-#     # @classmethod
-#     # def empty(cls):
-#     #     return cls('Θ', (0,), tuple())
-    
-#     # @classmethod
-#     # def vector(cls, contents):
-#     #     contents = tuple(contents)
-#     #     return cls(f'<{" ".join(contents)}>', (len(contents),), contents)
-
-# # class Scalar(mp.Operation):
-# #     name = 'sca'
-# #     arity = mp.Arity.unary
+    def __repr__(self):
+        return "_BaseShape()"
 
 
-# # class Vector(mp.Operation):
-# #     name = 'vec'
-# #     arity = mp.Arity(min_count=1, fixed_size=False)
-
-# #     def __str__(self):
-# #         return f'<{" ".join(map(str, self.operands))}>'
-
-# # class Empty(mp.Symbol):
-# #     pass
-
-# class Shape(mp.Operation):
-#     name = 'ρ'
-#     arity = mp.Arity.unary
+base_shape = _BaseShape()
+base_shape.shape = base_shape
 
 
-# class Dimension(mp.Operation):
-#     name = 'δ'
-#     arity = mp.Arity.unary
+class PythonArray(Generic[T]):
+    shape: Array[int]
 
-# class Take(mp.Operation):
-#     name = '△'
-#     arity = mp.Arity.binary
-#     infix = True
+    def __init__(self, x: Any, shape: Tuple[int, ...]) -> None:
+        self.x = x
+        if shape == (1,):
+            self.shape = base_shape
+        else:
+            self.shape = PythonArray[int](shape, (len(shape),))
 
-# class Drop(mp.Operation):
-#     name = '△'
-#     arity = mp.Arity.binary
-#     infix = True
+    def __getitem__(self, ix: Tuple[int, ...]) -> T:
+        x = self.x
+        for i in ix:
+            x = x[i]
+        return x
 
+    def __str__(self):
+        return f"({str(self.shape)} - {str(self.x)})"
 
-# class Cat(mp.Operation):
-#     name = '++'
-#     arity = mp.Arity.binary
-#     infix = True
-
-# class Index(mp.Operation):
-#     name = 'ψ'
-#     arity = mp.Arity.binary
-#     infix = True
+    def __repr__(self):
+        return f"PythonArray({repr(self.x)}, {repr(self.shape)})"
 
 
 
-# _ = mp.Wildcard.dot()
-# x = mp.Wildcard.dot('x')
-# y = mp.Wildcard.dot('y')
-# xs = mp.Wildcard.star('xs')
 
-# r.add(mp.ReplacementRule(
-#     mp.Pattern(Shape(Array(x, _, _))),
-#     lambda x: Vector(*x)
-# ))
-
-# r.add(mp.ReplacementRule(
-#     mp.Pattern(Shape(Vector(xs))),
-#     lambda xs: Vector(len(xs))
-# ))
-
-# # r.add(mp.ReplacementRule(
-# #     mp.Pattern(Dimension(x)),
-# #     lambda x: Shape(Shape(x))
-# # ))
+U = TypeVar("U")
 
 
-# r.add(mp.ReplacementRule(
-#     mp.Pattern(Shape(Index(x, y))),
-#     lambda x, y: return Cat(Shape(y))
-# ))
-
-# # r.add(mp.ReplacementRule(
-# #     mp.Pattern(Shape(Shape(ξ))),
-# #     Vector(Dimension(ξ))
-# # ))
+def sca(x: U) -> PythonArray[U]:
+    return PythonArray[U](x, tuple())
 
 
-# # r.add(mp.ReplacementRule(
-# #     mp.Pattern(Shape(Shape(ξ))),
-# #     Vector(Dimension(ξ))
-# # ))
+def vec(*xs: U) -> PythonArray[U]:
+    return PythonArray[U](list(xs), (len(xs),))
 
 
-# # r.add(mp.ReplacementRule(
-# #     mp.Pattern(Shape(Shape(ξ))),
-# #     Vector(Dimension(ξ))
-# # ))
+v = PythonArray[int]([0, 1, 2], (3,))
 
-# # cat
-# r.add()
+e_2 = PythonArray[int]([[0, 1], [2, 3], [4, 5]], (3, 2))
 
+e_3 = PythonArray[int](
+    [[[0, 1], [2, 3]], [[4, 5], [6, 7]], [[8, 9], [10, 11]]], (3, 2, 2)
+)
 
-
-# # k = mp.Wildcard.dot('k')
-# # A = mp.Wildcard.dot('A')
-
-# # mp.ReplacementRule(
-# #     mp.Pattern(
-# #         Shape(Take(k, A)),
-# #         lambda k, a: Cat(Vector(k), (Drop(1, Shape(A))))
-# #     )
-# # )
+e_4 = PythonArray[int](
+    [
+        [[[0, 1], [2, 3]], [[4, 5], [6, 7]]],
+        [[[8, 9], [10, 11]], [[12, 13], [14, 15]]],
+        [[[16, 17], [18, 19]], [[20, 21], [22, 23]]],
+    ],
+    (3, 2, 2, 2),
+)
 
 
+def equiv(a: Array[T], b: Array[T]) -> bool:
+    if a is base_shape and b is base_shape:
+        return True
 
-# # a = Array((2, 2), (1, 2, 3, 4), lambda i, j: i * 2 + j, variable_name='hi')
-# # print(r.replace(a))
-# # print(r.replace(Shape(a)))
-# # print(r.replace(Shape(Shape(a))))
-# # print(r.replace(Dimension(a)))
-# # print(r.replace(Dimension(a)))
+    if not equiv(a.shape, b.shape):
+        return False
+    dims = a.shape.shape[0,]
+    shape = tuple(a.shape[d,] for d in range(dims))
 
-# A = Cat(mp.Wildcard.dot('B'), Drop(Array((2,), ))
+    if not shape:
+        return a[tuple()] == b[tuple()]
+    for xs in product(*map(range, shape)):
+        if a[xs] != b[xs]:
+            return False
+    return True
+
+
+class _Empty:
+    shape: Array[int] = vec(0)
+
+    def __getitem__(self, ix: Tuple[int, ...]) -> NoReturn:
+        raise TypeError()
+
+
+empty = _Empty()
+
+
+class Scalar:
+    shape: Array[int] = empty
+
+
+class Dimension(Scalar):
+    def __init__(self, x: Array[T]) -> None:
+        self.x = x
+        self.d = x.shape.shape[0,]
+
+    def __getitem__(self, ix: Tuple[int, ...]) -> int:
+        assert not ix
+        return self.d
+
+    def __str__(self):
+        return f"δ{str(self.x)}"
+
+    def __repr__(self):
+        return f"Dimension({repr(self.x)})"
+
+
+assert equiv(Dimension(sca("hi")), sca(0))
+
+assert equiv(Dimension(v), sca(1))
+assert not equiv(Dimension(v), sca(2))
+assert equiv(Dimension(e_2), sca(2))
+assert equiv(Dimension(e_3), sca(3))
+assert equiv(Dimension(e_4), sca(4))
+
+assert equiv(v.shape, vec(3))
+assert equiv(e_2.shape, vec(3, 2))
+assert equiv(e_3.shape, vec(3, 2, 2))
+assert equiv(e_4.shape, vec(3, 2, 2, 2))
+
+def is_scalar(a: Array[T]) -> bool:
+    return equiv(Dimension(a), sca(0))
+
+
+def is_vector(a: Array[T]) -> bool:
+    return equiv(Dimension(a), sca(1))
+
+
+class VectorOfScalar(Generic[T]):
+    shape: Array[int] = base_shape
+    def __init__(self, x: Array[T]) -> None:
+        assert is_scalar(x)
+        self.x = x
+
+    def __getitem__(self, ix: Tuple[int, ...]) -> T:
+        assert ix == (0,)
+        return self.x[tuple()]
+
+class Psi(Scalar, Generic[T]):
+    def __init__(self, i: Array[int], e: Array[T]) -> None:
+        assert is_vector(i)
+
+        n = Dimension(e)
+        assert equiv(i.shape, VectorOfScalar(n))
+
+        # 2.00
+        self.idx: List[int] = []
+        for j in range(n[tuple()]):
+            i_ = i[j,]
+            assert 0 <= i_ and i_ <= e.shape[j,]
+            self.idx.append(i_)
+
+        self.i, self.e = i, e
+
+    def __getitem__(self, ix: Tuple[int, ...]) -> T:
+        assert not ix
+        return self.e[tuple(self.idx)]
+
+    def __str__(self):
+        return f"{str(self.i)}ψ{str(self.e)}"
+
+
+assert equiv(Psi(vec(0), v), sca(0))
+assert equiv(Psi(vec(1), v), sca(1))
+
+assert equiv(Psi(vec(), sca('hi')), sca('hi'))
+
+
+# class ScalarRelation(Protocol[T])
+
+
+class Ravel(Generic[T]):
+    shape: Array[int]
+    def __init__(self, e: Array[T]) -> None:
+        if is_scalar(e):
+            self.x = x
+            self.shape = base_shape
+            return
+        if is_vector(e):
+
+        self.shape =
+
+# class Cat(Generic[T]):
+#     def __init__(self, a: Array[T], b: Array[T]) -> None:
+#         a_first, *a_rest = a.shape
+#         b_first, *b_rest = b.shape
+#         assert a_rest == b_rest
+#         self.shape = [a_first + b_first] + a_rest
+#         self._a_first = a_first
+#         self.a, self.b = a, b
+
+#         def indexing(first, *rest):
+#             if first < self._a_first:
+#                 return a.indexing(first, *rest)
+#             return b.indexing(first - self._a_first, *rest)
+
+#     def __str__(self):
+#         return f'{self.a} ++ {self.b}'
+
+
+# a = PythonArray[int]([[1, 2], [2, 4], [3, 4]], [3])
+# b = PythonArray[float]([[4, 2], [2, 3]], [2])
+
+# # this will fail type checking :)
+# #c = Cat(a, b)
+
+# b = PythonArray[int]([[4, 2], [2, 3]], [2])
+# c = Cat(a, b)
+
+# class Take(Array):
+#     def __init__(self, a: Array[T], b: Array[T]) -> None:
+#         self.a, self.b = a, b
+#         a_first, *a_rest = a.shape
+#         b_first, *b_rest = b.shape
+#         assert a_rest == b_rest
+#         self.shape = [a_first + b_first] + a_rest
+#         self._a_first = a_first
+
+#         def indexing(first, *rest):
+#             if first < self._a_first:
+#                 return a.indexing(first, *rest)
+#             return b.indexing(first - self._a_first, *rest)
+
+#     def __str__(self):
+#         return f'{self.a} ++ {self.b}'
+
+# # def cat(a: Array[T], b: Array[T]) -> Array[T]:
+# #     a_first, a_rest = a.shape
+# #     b_first, b_rest = b.shape
+# #     assert a_rest == b_rest
+
+# #     def indexing(first, *rest):
+# #         if first < a_first:
+# #             return a.indexing(first, *rest)
+# #         return b.indexing(first - a_first, *rest)
+
+# #     return Array(indexing, [a_first + b_first] + a_rest)
+
+
+# # Shape = unary('ρ', 'Shape')
+# # Dimension = unary('δ', 'Dimension')
+# # Take = binary('△', 'Take')
+# # Drop = binary('▽', 'Drop')
+# # Cat = new('++', mp.Arity.variadic, 'Cat', infix=True, one_identity=True, associative=True)
+# # Psi = binary('ψ', 'Psi')
+# # Plus = new('+', mp.Arity.variadic, 'Plus', infix=True, one_identity=True, associative=True, commutative=True)
+
+# # _ = mp.Wildcard.dot()
+# # e = mp.Wildcard.dot('e')
+# # f = mp.Wildcard.dot('f')
+# # a = mp.Wildcard.symbol('a', Array)
+# # b = mp.Wildcard.symbol('b', Array)
+
+# # a_is_vec = mp.CustomConstraint(lambda a: a.is_vec)
+# # b_is_vec = mp.CustomConstraint(lambda b: b.is_vec)
