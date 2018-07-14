@@ -69,9 +69,8 @@ class PythonArray(Generic[T]):
         return f"PythonArray({repr(self.x)}, {repr(self.shape)})"
 
 
-
-
 U = TypeVar("U")
+V = TypeVar("V")
 
 
 def sca(x: U) -> PythonArray[U]:
@@ -103,7 +102,7 @@ e_4 = PythonArray[int](
 def equiv(a: Array[T], b: Array[T]) -> bool:
     if a is base_shape and b is base_shape:
         return True
-
+    PointWiseRelation(lambda l, r: l == r, a, b)
     if not equiv(a.shape, b.shape):
         return False
     dims = a.shape.shape[0,]
@@ -160,6 +159,7 @@ assert equiv(e_2.shape, vec(3, 2))
 assert equiv(e_3.shape, vec(3, 2, 2))
 assert equiv(e_4.shape, vec(3, 2, 2, 2))
 
+
 def is_scalar(a: Array[T]) -> bool:
     return equiv(Dimension(a), sca(0))
 
@@ -170,6 +170,7 @@ def is_vector(a: Array[T]) -> bool:
 
 class VectorOfScalar(Generic[T]):
     shape: Array[int] = base_shape
+
     def __init__(self, x: Array[T]) -> None:
         assert is_scalar(x)
         self.x = x
@@ -177,6 +178,7 @@ class VectorOfScalar(Generic[T]):
     def __getitem__(self, ix: Tuple[int, ...]) -> T:
         assert ix == (0,)
         return self.x[tuple()]
+
 
 class Psi(Scalar, Generic[T]):
     def __init__(self, i: Array[int], e: Array[T]) -> None:
@@ -205,22 +207,74 @@ class Psi(Scalar, Generic[T]):
 assert equiv(Psi(vec(0), v), sca(0))
 assert equiv(Psi(vec(1), v), sca(1))
 
-assert equiv(Psi(vec(), sca('hi')), sca('hi'))
+assert equiv(Psi(vec(), sca("hi")), sca("hi"))
 
 
-# class ScalarRelation(Protocol[T])
+class PointWiseRelation(Generic[T, U, V]):
+    def __init__(self, rel: Callable[[T, U], V], l: Array[T], r: Array[U]) -> None:
+        assert equiv(l.shape, r.shape)
+        self.shape = l.shape
+        self.rel = rel
+        self.l = l
+        self.r = r
+
+    def __getitem__(self, ix: Tuple[int, ...]) -> V:
+        return self.rel(self.l[ix], self.r[ix])
+
+
+def plus(a, b):
+    return a + b
+
+
+assert equiv(PointWiseRelation(plus, v, v), PythonArray[int]([0, 2, 4], (3,)))
+
+
+class ScalarLeftExtensionRelation(Generic[T, U, V]):
+    def __init__(self, rel: Callable[[T, U], V], l: Array[T], r: Array[U]) -> None:
+        assert is_scalar(l)
+        self.shape = r.shape
+        self.rel = rel
+        self.l = l
+        self.r = r
+
+    def __getitem__(self, ix: Tuple[int, ...]) -> V:
+        return self.rel(self.l[tuple()], self.r[ix])
+
+
+assert equiv(
+    ScalarLeftExtensionRelation(plus, sca(1), v), PythonArray[int]([1, 2, 3], (3,))
+)
+assert not equiv(
+    ScalarLeftExtensionRelation(plus, sca(2), v), PythonArray[int]([1, 2, 3], (3,))
+)
+
+print(ScalarLeftExtensionRelation(plus, sca(2), v)[0,])
+
+
+class ScalarRightExtensionRelation(Generic[T, U, V]):
+    def __init__(self, rel: Callable[[T, U], V], l: Array[T], r: Array[U]) -> None:
+        assert is_scalar(r)
+        self.shape = l.shape
+        self.rel = rel
+        self.l = l
+        self.r = r
+
+    def __getitem__(self, ix: Tuple[int, ...]) -> V:
+        return self.rel(self.l[ix], self.r[tuple()])
 
 
 class Ravel(Generic[T]):
     shape: Array[int]
+
     def __init__(self, e: Array[T]) -> None:
         if is_scalar(e):
             self.x = x
             self.shape = base_shape
             return
-        if is_vector(e):
+        # if is_vector(e):
 
-        self.shape =
+        # self.shape =
+
 
 # class Cat(Generic[T]):
 #     def __init__(self, a: Array[T], b: Array[T]) -> None:
